@@ -13,7 +13,7 @@ async def lifespan(app: FastAPI):
     app.state.predictor = Predictor(MODEL_PATH)
     yield
 
-app = FastAPI(title="Genrify Genre API", version="0.1.0", lifespan=____) # FastAPI needs to be handed the startup function above. what is it called?
+app = FastAPI(title="Genrify Genre API", version="0.1.0", lifespan=lifespan) # FastAPI needs to be handed the startup function above. what is it called?
 
 @app.get("/health", tags=["meta"])
 def health(request: Request):
@@ -25,12 +25,12 @@ def predict(payload: PredictRequest, request: Request):
     predictor = request.app.state.predictor
     values = payload.model_dump()
     # build the list in the exact training order. which constant holds that order? (imported at the top). float() turns the bool explicit into 1.0 or 0.0
-    vector = [float(values[name]) for name in ____]
+    vector = [float(values[name]) for name in FEATURE_ORDER]
     probabilities = predictor.predict(vector)
-    genre = max(probabilities, key=probabilities.____) # max() needs a way to look up each genre's probability. which dict method takes a key and returns its value?
+    genre = max(probabilities, key=probabilities.get) # max() needs a way to look up each genre's probability. which dict method takes a key and returns its value?
     return {
         "genre": genre,
         "confidence": probabilities[genre], # the probability of the winning genre
         "probabilities": probabilities,
-        "source": predictor.____, # which attribute of the predictor says where this answer came from? ("model" or "mock")
+        "source": predictor.source, # which attribute of the predictor says where this answer came from? ("model" or "mock")
     }
