@@ -1,20 +1,36 @@
-from fastapi import FastAPI
+from contextlib import asynccontextmanager
 
+import sklearn
+from fastapi import FastAPI, Request
+
+from .predictor import FEATURE_ORDER, MODEL_PATH, Predictor
 from .schemas import PredictRequest
 
-app = FastAPI(title="Genrify Genre API", version="0.1.0")
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # runs once, when the server starts, before the first request. The model is stored on app.state so every request can reuse it. why not load it inside predict() instead?
+    app.state.predictor = Predictor(MODEL_PATH)
+    yield
+
+app = FastAPI(title="Genrify Genre API", version="0.1.0", lifespan=____) # FastAPI needs to be handed the startup function above. what is it called?
 
 @app.get("/health", tags=["meta"])
-def health():
-    return {"status": "ok", "source": "mock"}
+def health(request: Request):
+    predictor = request.app.state.predictor
+    return {"status": "ok", "source": predictor.source, "sklearn_version": sklearn.__version__} # open /health. it no longer says "mock". the version must match the one that wrote the .pkl
 
-@app.post("/predict", tags=["prediction"]) # POST: the client is sending data (a song's features) to the server. GET is for fetching and has no request body
-def predict(payload: PredictRequest): # PredictRequest: FastAPI reads the JSON body, checks it against that class, and only calls this function if it passes. otherwise it replies 422 automatically
+@app.post("/predict", tags=["prediction"])
+def predict(payload: PredictRequest, request: Request):
+    predictor = request.app.state.predictor
+    values = payload.model_dump()
+    # build the list in the exact training order. which constant holds that order? (imported at the top). float() turns the bool explicit into 1.0 or 0.0
+    vector = [float(values[name]) for name in ____]
+    probabilities = predictor.predict(vector)
+    genre = max(probabilities, key=probabilities.____) # max() needs a way to look up each genre's probability. which dict method takes a key and returns its value?
     return {
-        "genre": "pop", # any one of "acoustic", "edm", "hip-hop", "pop", "rock". hardcoded for now; the real model will choose it later
-        "confidence": 0.5, # the probability of the genre above. always between 0 and 1, and must equal that genre's entry below
-        "probabilities": {
-            "acoustic": 0.1, "edm": 0.1, "hip-hop": 0.15, "pop": 0.5, "rock": 0.15 # pop is 0.5 to match confidence. all five must add up to 1 (0.1 + 0.1 + 0.15 + 0.5 + 0.15), because exactly one genre is right
-        },
-        "source": "mock" # we're returning a mock response for now. "model" is reserved for the real classifier
+        "genre": genre,
+        "confidence": probabilities[genre], # the probability of the winning genre
+        "probabilities": probabilities,
+        "source": predictor.____, # which attribute of the predictor says where this answer came from? ("model" or "mock")
     }
